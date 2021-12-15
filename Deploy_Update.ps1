@@ -1,3 +1,11 @@
+$Folder = 'C:\_\Windows_Update\'
+if (Test-Path  $Folder) {
+    "Path exists!"
+Remove-Item "C:\_\Windows_Update\" -Recurse -Force -Confirm:$false 
+} else {
+    "Path doesn't exist"
+}
+Set-ExecutionPolicy Unrestricted -force
 $winVer = [System.Environment]::OSVersion.Version.Major
 $dir = 'C:\_\Windows_Update\packages'
 mkdir $dir
