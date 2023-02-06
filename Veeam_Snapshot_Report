@@ -1,0 +1,111 @@
+#Variables
+$vCenter = "fqnd or ip vcenter"
+$vCenterUser = "username"
+$vCenterPass = "password"
+$SMTPServer = "serverSMTP"
+$To = ""
+$From = ""
+
+#HTML formatting
+$style = "BODY{font-family: Arial; font-size: 10pt;}" 
+$style = $style + "TABLE{border: 1px solid red; border-collapse: collapse;}" 
+$style = $style + "TH{border: 1px solid; background-color: #4CAF50; color: white; padding: 5px; }" 
+$style = $style + "TD{border: 1px solid; padding: 5px; }" 
+$style = $style + "
+"
+$date = Get-Date -Format "dddd dd/MM/yyyy HH:mm K"
+
+#Connect to vCenter"
+CLS
+Write-Host "Connecting to $vCenter" -ForegroundColor Blue
+Connect-VIServer -Server $vCenter -User $vCenterUser -Password $vCenterPass -Force | Out-Null
+Write-Host " Connected to $vCenter" -ForegroundColor Green
+
+#Get list of VMs with snapshots
+Write-Host "Generating VM snapshot report" -ForegroundColor Blue
+[Array] $SnapshotReport = Get-vm 
+$results = @();
+foreach ( $vmItem in $SnapshotReport )
+
+{
+    [Array] $vmSnapshotList = @( Get-Snapshot -VM $vmItem );
+    
+	foreach ( $snapshotItem in $vmSnapshotList )
+    {
+        $vmProvisionedSpaceGB = [Math]::Round( $vmItem.ProvisionedSpaceGB, 2 );
+        $vmUsedSpaceGB        = [Math]::Round( $vmItem.UsedSpaceGB,        2 );
+        $snapshotSizeGB       = [Math]::Round( $snapshotItem.SizeGB,       2 );
+        $snapshotAgeDays      = ((Get-Date) - $snapshotItem.Created).Days;
+
+        $output = New-Object -TypeName PSObject;
+
+        $output | Add-Member -MemberType NoteProperty -Name "VM"                 -Value $vmItem;
+        $output | Add-Member -MemberType NoteProperty -Name "Name"               -Value $snapshotItem.Name;
+        $output | Add-Member -MemberType NoteProperty -Name "Description"        -Value $snapshotItem.Description;
+        $output | Add-Member -MemberType NoteProperty -Name "Created"            -Value $snapshotItem.Created;
+        $output | Add-Member -MemberType NoteProperty -Name "AgeDays"            -Value $snapshotAgeDays;
+        $output | Add-Member -MemberType NoteProperty -Name "ParentSnapshot"     -Value $snapshotItem.ParentSnapshot.Name;
+        $output | Add-Member -MemberType NoteProperty -Name "IsCurrentSnapshot"  -Value $snapshotItem.IsCurrent;
+        $output | Add-Member -MemberType NoteProperty -Name "SnapshotSizeGB"     -Value $snapshotSizeGB;
+        $output | Add-Member -MemberType NoteProperty -Name "ProvisionedSpaceGB" -Value $vmProvisionedSpaceGB;
+        $output | Add-Member -MemberType NoteProperty -Name "UsedSpaceGB"        -Value $vmUsedSpaceGB;
+        $output | Add-Member -MemberType NoteProperty -Name "PowerState"         -Value $snapshotItem.PowerState;
+
+        $results += $output ;
+    }
+}
+
+Write-Host " Completed" -ForegroundColor Green
+
+#Sending email report
+$htmlbody = @"
+<html>
+  <head>
+    <style>
+$style
+    </style>
+  </head>
+  <body>
+    <p>Snapshot report for virtual machines as of $date</p>
+    <table>
+      <tr>
+        <th>VM Name</th>
+        <th>Snapshot Name</th>
+        <th>Snapshot Description</th>
+        <th>Snapshot Created</th>
+        <th>Snapshot Age (Days)</th>
+        <th>Parent Snapshot</th>
+        <th>Is Current Snapshot</th>
+        <th>Snapshot Size (GB)</th>
+        <th>VM Provisioned Space (GB)</th>
+        <th>VM Used Space (GB)</th>
+        <th>Power State</th>
+      </tr>
+$(foreach ($item in $results) {
+    "<tr>" +
+    "<td>" + $item.VM.Name + "</td>" +
+    "<td>" + $item.Name + "</td>" +
+    "<td>" + $item.Description + "</td>" +
+    "<td>" + $item.Created + "</td>" +
+    "<td>" + $item.AgeDays + "</td>" +
+    "<td>" + $item.ParentSnapshot + "</td>" +
+    "<td>" + $item.IsCurrentSnapshot + "</td>" +
+    "<td>" + $item.SnapshotSizeGB + "</td>" +
+    "<td>" + $item.ProvisionedSpaceGB + "</td>" +
+    "<td>" + $item.UsedSpaceGB + "</td>" +
+    "<td>" + $item.PowerState + "</td>" +
+    "</tr>"
+})
+    </table>
+  </body>
+</html>
+"@
+Write-Host "Sending VM snapshot report" -ForegroundColor Blue
+Send-MailMessage -To $To -From $From -Subject "Snapshot Email Report for $Date" -SmtpServer $SMTPServer -BodyAsHtml -Body $htmlbody
+Write-Host " Completed" -ForegroundColor Green
+
+
+#Disconnecting vCenter
+Disconnect-VIServer -Server $vCenter -Force -Confirm:$false
+Write-Host "Disconnecting to $vCenter" -ForegroundColor Blue
+
